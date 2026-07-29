@@ -2,7 +2,9 @@
    sube en cuanto hay cambios pendientes y conexión. */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Conflicto, bajarFotos, bajarTodo, fusionar, subirEstado, subirJugador,
+  Conflicto, bajarFotos, bajarTodo, borrarJugador, buscarFichaPorCorreo,
+  escucharEstado, escucharJugadores, fusionar, pasarCodigo, reclamarFicha,
+  subirEstado, subirJugador,
 } from '../lib/nube.js';
 import { guardarFotos } from '../lib/db.js';
 import { SyncCtx } from './sincronizacion.jsx';
@@ -116,20 +118,64 @@ export default function ProveedorSyncFirebase({ db, commit, fotos, setFotos, chi
     }
   }, [bajarAhora, commit]);
 
-  /* Bajar al abrir y cuando vuelve la señal. */
+  /* ── escuchas en vivo ──
+     Se queda oyendo la nube, así que cualquier cambio aparece en todos los
+     aparatos en el momento, sin recargar ni volver a abrir.
+     Corre también sin sesión: leer es público y un invitado tiene que ver
+     la liga. Sin esto, quien entrara como invitado veía la app vacía. */
+  const ultEstado = useRef(undefined);
+  const ultJugadores = useRef(undefined);
+
+  const aplicar = useCallback(() => {
+    const remoto = ultEstado.current;
+    const players = ultJugadores.current;
+    if (remoto === undefined && players === undefined) return;
+    const local = dbRef.current;
+    if (!local) return;
+
+    /* Si tenemos cambios sin subir y la nube ya avanzó, no se pisa nada:
+       lo resuelve una persona desde los ajustes. */
+    if (local.sync?.pendiente && remoto && (remoto.version || 0) > (local.sync.version || 0)) {
+      setEstado('conflicto');
+      return;
+    }
+
+    commit(fusionar(local, remoto ?? null, players ?? []), true, true);
+    if (!local.sync?.pendiente) setEstado('alDia');
+  }, [commit]);
+
   useEffect(() => {
-    if (!user) { setEstado('apagado'); return undefined; }
-    bajarAhora();
-    const alConectar = () => bajarAhora();
+    const alFallar = (e) => {
+      setError(e);
+      setEstado(navigator.onLine ? 'pendiente' : 'sinConexion');
+    };
+    const offEstado = escucharEstado((d) => { ultEstado.current = d; aplicar(); }, alFallar);
+    const offJug = escucharJugadores((l) => { ultJugadores.current = l; aplicar(); }, alFallar);
+
     const alDesconectar = () => setEstado('sinConexion');
-    window.addEventListener('online', alConectar);
     window.addEventListener('offline', alDesconectar);
     return () => {
-      window.removeEventListener('online', alConectar);
+      offEstado();
+      offJug();
       window.removeEventListener('offline', alDesconectar);
     };
+  }, [aplicar]);
+
+  /* Fotos que falten, cuando cambia la lista de jugadores. */
+  useEffect(() => {
+    if (!db?.players?.length) return;
+    const faltan = db.players.map((p) => p.id).filter((id) => !fotos[id]);
+    if (!faltan.length || !navigator.onLine) return;
+    let vivo = true;
+    bajarFotos(faltan).then((nuevas) => {
+      if (!vivo || !Object.keys(nuevas).length) return;
+      const juntas = { ...fotos, ...nuevas };
+      setFotos(juntas);
+      guardarFotos(juntas).catch(() => { });
+    }).catch(() => { });
+    return () => { vivo = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [db?.players?.length]);
 
   /* Subir solo cuando hay algo pendiente y señal. */
   useEffect(() => {
@@ -138,14 +184,70 @@ export default function ProveedorSyncFirebase({ db, commit, fotos, setFotos, chi
     return () => clearTimeout(t);
   }, [user, pendiente, estado, subirAhora]);
 
+  /* ── registro de un jugador nuevo ──
+     El código NO se comprueba acá: se manda al servidor, y es la regla la que
+     lo compara contra el que está guardado. Si no cuadra, esta escritura falla
+     y nunca se llega a crear la ficha. */
+  const marcarPaso = (e, paso) => {
+    if (e && !e.paso) e.paso = paso;
+    throw e;
+  };
+
+  const registrar = useCallback(async ({ codigo, name, apodo, mano }) => {
+    if (!user) throw new Error('Entrá con tu cuenta primero.');
+    await pasarCodigo(user.uid, (codigo || '').trim().toUpperCase())
+      .catch((e) => marcarPaso(e, 'codigo'));
+
+    const ficha = {
+      id: user.uid,
+      uid: user.uid,
+      email: (user.email || '').trim().toLowerCase(),
+      name: (name || '').trim(),
+      apodo: (apodo || '').trim(),
+      mano: mano || '',
+      actualizado: Date.now(),
+    };
+    await subirJugador(ficha).catch((e) => marcarPaso(e, 'ficha'));
+    const local = dbRef.current;
+    commit({ ...local, players: [...(local.players || []), ficha] }, true);
+    return ficha;
+  }, [user, commit]);
+
+  /* Ficha que el admin dejó preparada con este correo, si existe. */
+  const buscarReclamable = useCallback(async () => {
+    const correo = (user?.email || '').trim().toLowerCase();
+    if (!correo) return null;
+    try {
+      const f = await buscarFichaPorCorreo(correo);
+      return f && !f.uid ? f : null;
+    } catch { return null; }
+  }, [user]);
+
+  const reclamar = useCallback(async (id) => {
+    if (!user) throw new Error('Entrá con tu cuenta primero.');
+    await reclamarFicha(id, user.uid);
+    await bajarAhora();
+  }, [user, bajarAhora]);
+
+  const borrarJugadorNube = useCallback(async (id) => {
+    await borrarJugador(id);
+  }, []);
+
   const valor = useMemo(() => ({
-    estado: user ? estado : 'apagado',
+    estado,
     subidoEn,
     error,
     subirAhora,
     bajarAhora,
     resolver,
-  }), [user, estado, subidoEn, error, subirAhora, bajarAhora, resolver]);
+    registrar,
+    buscarReclamable,
+    reclamar,
+    borrarJugadorNube,
+  }), [
+    estado, subidoEn, error, subirAhora, bajarAhora, resolver,
+    registrar, buscarReclamable, reclamar, borrarJugadorNube,
+  ]);
 
   return <SyncCtx.Provider value={valor}>{children}</SyncCtx.Provider>;
 }

@@ -12,6 +12,7 @@ import RankingTab from './ranking/RankingTab.jsx';
 import JugadoresTab from './jugadores/JugadoresTab.jsx';
 import MiPerfil from './perfil/MiPerfil.jsx';
 import Bienvenida from './pantallas/Bienvenida.jsx';
+import Registro from './pantallas/Registro.jsx';
 import { LuzSync, ProveedorSyncNulo } from './ui/sincronizacion.jsx';
 import DatosTab from './datos/DatosTab.jsx';
 
@@ -106,8 +107,9 @@ export default function App({ Sesion, Sync = ProveedorSyncNulo }) {
 }
 
 function Pantallas({ db, commit, fotos, setFoto, saved, tab, setTab, ajustes, setAjustes }) {
-  const { esAdmin, user, cargando } = useSesion();
+  const { esAdmin, user, miId, cargando } = useSesion();
   const [invitado, setInvitado] = useState(null); // null = todavía sin leer
+  const [omitioRegistro, setOmitioRegistro] = useState(false);
   const eraUsuario = useRef(false);
 
   useEffect(() => { leerModoInvitado().then(setInvitado); }, []);
@@ -116,6 +118,7 @@ function Pantallas({ db, commit, fotos, setFoto, saved, tab, setTab, ajustes, se
   useEffect(() => {
     if (eraUsuario.current && !user) {
       setInvitado(false);
+      setOmitioRegistro(false);
       guardarModoInvitado(false).catch(() => { });
     }
     eraUsuario.current = !!user;
@@ -138,6 +141,18 @@ function Pantallas({ db, commit, fotos, setFoto, saved, tab, setTab, ajustes, se
   }
 
   if (!user && !invitado) return <Bienvenida onInvitado={entrarDeInvitado} />;
+
+  /* Entró con su cuenta pero todavía no tiene ficha: se le pide el código
+     y los datos. Puede saltarlo y mirar la liga, y registrarse después
+     desde la pestaña Perfil. */
+  if (user && !miId && !omitioRegistro) {
+    return (
+      <Registro
+        onListo={() => setOmitioRegistro(false)}
+        onOmitir={() => setOmitioRegistro(true)}
+      />
+    );
+  }
 
   return (
     <FotoCtx.Provider value={{ fotos, setFoto }}>

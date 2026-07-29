@@ -12,6 +12,11 @@ import React, { createContext, useContext } from 'react';
 export const SyncCtx = createContext({
   estado: 'apagado', subidoEn: null, error: null,
   subirAhora: async () => { }, bajarAhora: async () => { }, resolver: async () => { },
+  /* Registro de jugadores. Sin nube no hacen nada. */
+  registrar: async () => { throw new Error('sin conexión con la nube'); },
+  buscarReclamable: async () => null,
+  reclamar: async () => { throw new Error('sin conexión con la nube'); },
+  borrarJugadorNube: async () => { throw new Error('sin conexión con la nube'); },
 });
 
 export const useSync = () => useContext(SyncCtx);

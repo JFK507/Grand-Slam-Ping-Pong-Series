@@ -11,7 +11,8 @@
    Los torneos NO incluyen a los jugadores: van por separado justamente para
    que un jugador pueda editar su ficha sin poder tocar el resto de la liga. */
 import {
-  collection, doc, getDoc, getDocs, runTransaction, setDoc,
+  collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query,
+  runTransaction, setDoc, updateDoc, where,
 } from 'firebase/firestore';
 import { nube } from './firebase.js';
 
@@ -94,8 +95,33 @@ export async function subirJugador(p) {
   return datos;
 }
 
+/* Borra un jugador de la nube, con su foto.
+   Si solo se quita del teléfono, la escucha en vivo lo vuelve a traer
+   en el siguiente aviso: el documento sigue existiendo del otro lado. */
+export async function borrarJugador(id) {
+  await deleteDoc(doc(nube, 'jugadores', id));
+  try { await deleteDoc(doc(nube, 'fotos', id)); } catch { /* puede no tener foto */ }
+}
+
 export async function subirFoto(id, img) {
   await setDoc(doc(nube, 'fotos', id), { img, actualizado: Date.now() });
+}
+
+/* Busca una ficha que el admin haya creado de antemano con este correo.
+   La lectura es pública, así que no hace falta permiso especial. */
+export async function buscarFichaPorCorreo(correo) {
+  const q = query(collection(nube, 'jugadores'), where('email', '==', correo));
+  const s = await getDocs(q);
+  if (s.empty) return null;
+  const d = s.docs[0];
+  return { id: d.id, ...d.data() };
+}
+
+/* Reclamar una ficha preexistente. Escribe SOLO el uid: la regla del servidor
+   no permite tocar ningún otro campo en esta operación, y exige que el correo
+   de la ficha coincida con el de la cuenta. */
+export async function reclamarFicha(id, uid) {
+  await updateDoc(doc(nube, 'jugadores', id), { uid });
 }
 
 /* Marca de que alguien puso el código de acceso correcto.
@@ -103,6 +129,27 @@ export async function subirFoto(id, img) {
    y nunca llegamos a crear la ficha. */
 export async function pasarCodigo(uid, codigo) {
   await setDoc(doc(nube, 'acceso', uid), { codigo, cuando: Date.now() });
+}
+
+/* ───────── escuchas en vivo ─────────
+   En vez de bajar una sola vez al abrir, la app se queda escuchando: cuando
+   alguien sube algo, a todos los demás les llega en el momento. Sin señal
+   Firestore entrega lo último que tenía guardado y reconecta solo. */
+
+export function escucharEstado(cb, alFallar) {
+  return onSnapshot(
+    refEstado(),
+    (snap) => cb(snap.exists() ? snap.data() : null),
+    (e) => alFallar?.(e),
+  );
+}
+
+export function escucharJugadores(cb, alFallar) {
+  return onSnapshot(
+    collection(nube, 'jugadores'),
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    (e) => alFallar?.(e),
+  );
 }
 
 /* ───────── fusión ───────── */

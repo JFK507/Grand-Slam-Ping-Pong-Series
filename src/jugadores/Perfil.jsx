@@ -8,54 +8,14 @@ import { agregados, caraACara, partidosDe, rachaDe, rivalTop } from '../lib/esta
 import { Btn, Card, Eyebrow, Segmento } from '../ui/primitivas.jsx';
 import { Avatar, useFotos } from '../ui/fotos.jsx';
 import { useConfirmar } from '../ui/dialogo.jsx';
+import { useSync } from '../ui/sincronizacion.jsx';
 import { useSesion } from '../ui/sesion.jsx';
 
-export default function Perfil({ p, db, commit, onBack }) {
-  const { puedoEditar, esAdmin } = useSesion();
-  const editable = puedoEditar(p.id);
-  const confirmar = useConfirmar();
-  const { fotos, setFoto } = useFotos();
-  const fileRef = useRef(null);
-  const [busy, setBusy] = useState(false);
-  const [rival, setRival] = useState('');
-
-  const s = agregados(db)[p.id];
-  const usado = db.tournaments.some((t) => t.entrants.includes(p.id));
-  const nombreDe = (id) => db.players.find((x) => x.id === id)?.name || '?';
-  const partidos = useMemo(() => partidosDe(db, p.id).reverse(), [db, p.id]);
-  const top = useMemo(() => rivalTop(db, p.id), [db, p.id]);
-  const h2h = useMemo(() => (rival ? caraACara(db, p.id, rival) : null), [db, p.id, rival]);
-  const racha = useMemo(() => rachaDe(db, p.id), [db, p.id]);
-  const totalT = db.tournaments.filter((t) => t.stage === 'finalizado').length;
-
-  const set = (patch) => commit({
-    ...db,
-    players: db.players.map((x) => (x.id === p.id ? sellar({ ...x, ...patch }) : x)),
-  }, true);
-
-  const subir = async (e) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    setBusy(true);
-    try { await setFoto(p.id, await comprimirFoto(f)); } catch { }
-    setBusy(false);
-    e.target.value = '';
-  };
-
-  const borrar = async () => {
-    const ok = await confirmar({
-      titulo: `Borrar a ${p.name}`,
-      texto: 'Sale del registro de jugadores. No tiene torneos jugados, así que nada más cambia.',
-      ok: 'Borrar',
-      peligro: true,
-    });
-    if (!ok) return;
-    setFoto(p.id, null);
-    commit({ ...db, players: db.players.filter((x) => x.id !== p.id) }, true);
-    onBack();
-  };
-
-  const Campo = ({ label, value, onSave, multi, placeholder, bloqueado }) => (
+/* Campo y Stat viven FUERA del componente a propósito.
+   Definidos adentro, React los toma como componentes nuevos en cada render y
+   remonta el árbol: los campos de texto pierden el foco tras cada letra. */
+function Campo({ label, value, onSave, multi, placeholder, bloqueado, editable }) {
+  return (
     <div>
       <Eyebrow>{label}</Eyebrow>
       {bloqueado || !editable ? (
@@ -85,8 +45,10 @@ export default function Perfil({ p, db, commit, onBack }) {
       )}
     </div>
   );
+}
 
-  const Stat = ({ k, v, color }) => (
+function Stat({ k, v, color }) {
+  return (
     <Card style={{ padding: '10px 6px', textAlign: 'center' }}>
       <div className="num" style={{ fontSize: 23, fontWeight: 800, color: color || C.chalk, lineHeight: 1 }}>
         {v}
@@ -98,6 +60,67 @@ export default function Perfil({ p, db, commit, onBack }) {
       </div>
     </Card>
   );
+}
+
+export default function Perfil({ p, db, commit, onBack }) {
+  const { puedoEditar, esAdmin } = useSesion();
+  const editable = puedoEditar(p.id);
+  const confirmar = useConfirmar();
+  const { borrarJugadorNube } = useSync();
+  const [errorBorrado, setErrorBorrado] = useState('');
+  const { fotos, setFoto } = useFotos();
+  const fileRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const [rival, setRival] = useState('');
+
+  const s = agregados(db)[p.id];
+  const usado = db.tournaments.some((t) => t.entrants.includes(p.id));
+  const nombreDe = (id) => db.players.find((x) => x.id === id)?.name || '?';
+  const partidos = useMemo(() => partidosDe(db, p.id).reverse(), [db, p.id]);
+  const top = useMemo(() => rivalTop(db, p.id), [db, p.id]);
+  const h2h = useMemo(() => (rival ? caraACara(db, p.id, rival) : null), [db, p.id, rival]);
+  const racha = useMemo(() => rachaDe(db, p.id), [db, p.id]);
+  const totalT = db.tournaments.filter((t) => t.stage === 'finalizado').length;
+
+  const set = (patch) => commit({
+    ...db,
+    players: db.players.map((x) => (x.id === p.id ? sellar({ ...x, ...patch }) : x)),
+  }, true);
+
+  const subir = async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setBusy(true);
+    try { await setFoto(p.id, await comprimirFoto(f)); } catch { }
+    setBusy(false);
+    e.target.value = '';
+  };
+
+  /* Primero la nube, después el teléfono. Si se borrara solo local, la escucha
+     en vivo lo traería de vuelta en cuanto llegue el siguiente aviso. */
+  const borrar = async () => {
+    const ok = await confirmar({
+      titulo: `Borrar a ${p.name}`,
+      texto: 'Sale del registro de jugadores. No tiene torneos jugados, así que nada más cambia.',
+      ok: 'Borrar',
+      peligro: true,
+    });
+    if (!ok) return;
+    setErrorBorrado('');
+    try {
+      await borrarJugadorNube(p.id);
+    } catch (e) {
+      setErrorBorrado(
+        e?.code === 'permission-denied'
+          ? 'El servidor no permitió borrarlo. Solo quien administra puede.'
+          : 'No se pudo borrar de la nube. Hacelo con señal, o volvería a aparecer.',
+      );
+      return;
+    }
+    setFoto(p.id, null);
+    commit({ ...db, players: db.players.filter((x) => x.id !== p.id) }, true);
+    onBack?.();
+  };
 
   return (
     <div style={{ padding: 16, display: 'grid', gap: 14 }}>
@@ -155,10 +178,10 @@ export default function Perfil({ p, db, commit, onBack }) {
         </>
       )}
 
-      <Campo label="Nombre" value={p.name} placeholder="Nombre completo"
+      <Campo editable={editable} label="Nombre" value={p.name} placeholder="Nombre completo"
         bloqueado={!esAdmin}
         onSave={(v) => set({ name: v.trim() || p.name })} />
-      <Campo label="Apodo" value={p.apodo || ''} placeholder="Cómo le dicen en la mesa"
+      <Campo editable={editable} label="Apodo" value={p.apodo || ''} placeholder="Cómo le dicen en la mesa"
         onSave={(v) => set({ apodo: v.trim() })} />
 
       {esAdmin && (
@@ -187,6 +210,9 @@ export default function Perfil({ p, db, commit, onBack }) {
 
       {esAdmin && !usado && (
         <Btn onClick={borrar} style={{ borderColor: C.red, color: C.red }}>Borrar jugador</Btn>
+      )}
+      {errorBorrado && (
+        <div style={{ fontSize: 12, color: C.red, lineHeight: 1.5 }}>{errorBorrado}</div>
       )}
       {esAdmin && usado && (
         <div style={{ fontSize: 10, color: C.dim }}>
