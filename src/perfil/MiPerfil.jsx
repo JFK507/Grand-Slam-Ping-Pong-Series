@@ -4,7 +4,7 @@ import { C } from '../lib/constantes.js';
 import { Eyebrow, Vacio } from '../ui/primitivas.jsx';
 import { useSesion } from '../ui/sesion.jsx';
 import Perfil from '../jugadores/Perfil.jsx';
-import { Entrar, PieCuenta } from './Cuenta.jsx';
+import { CrearPerfil, Entrar, PieCuenta } from './Cuenta.jsx';
 
 export default function MiPerfil({ db, commit }) {
   const { miId, rol, user, cargando } = useSesion();
@@ -19,19 +19,7 @@ export default function MiPerfil({ db, commit }) {
   const yo = rol !== 'invitado' && miId ? db.players.find((p) => p.id === miId) : null;
 
   if (!yo) {
-    return (
-      <div>
-        <Vacio>
-          Tu cuenta todavía no está vinculada a un jugador.
-          <div style={{ marginTop: 10, fontSize: 11.5, color: C.dim }}>
-            Pedile a quien administra la liga que vincule
-            {' '}<b style={{ color: C.chalk }}>{user.email}</b>{' '}
-            a tu ficha.
-          </div>
-        </Vacio>
-        <PieCuenta />
-      </div>
-    );
+    return <CrearPerfil db={db} commit={commit} />;
   }
 
   return (

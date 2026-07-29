@@ -9,6 +9,10 @@ export const C = {
 /* Puntos acumulativos: el campeón termina con 25. */
 export const PTS = { clasificar: 3, ganarCuartos: 5, ganarSemis: 7, ganarFinal: 10 };
 
+/* Código que se comparte entre los jugadores de la liga para poder
+   crear su propia ficha al entrar por primera vez con Google. */
+export const CODIGO_LIGA = 'JESURUN26';
+
 export const TARGET_QF = 7;
 export const TARGET_SF = 10;
 
