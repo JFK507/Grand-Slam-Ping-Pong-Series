@@ -158,6 +158,37 @@ export function escucharJugadores(cb, alFallar) {
    Torneos y temporadas: manda la nube, porque es la copia compartida.
    Jugadores: documento por documento, gana el de fecha más reciente, así
    la ficha que alguien editó en su teléfono no se pierde. */
+/* Colapsa fichas repetidas. Puede haber dos por el mismo id, o dos distintas
+   que apunten a la misma persona (mismo uid o mismo correo). Gana la de fecha
+   más reciente. Las fichas sin uid ni correo se dejan como están: son las que
+   creó el admin a mano y no hay forma de saber si son la misma persona. */
+function deduplicar(lista) {
+  const porId = new Map();
+  lista.forEach((p) => {
+    const previo = porId.get(p.id);
+    if (!previo || (p.actualizado || 0) >= (previo.actualizado || 0)) porId.set(p.id, p);
+  });
+
+  const clave = (p) => (
+    p.uid ? `u:${p.uid}`
+      : (p.email ? `e:${String(p.email).trim().toLowerCase()}` : null)
+  );
+
+  const salida = [];
+  const vistos = new Map();
+  [...porId.values()].forEach((p) => {
+    const k = clave(p);
+    if (!k) { salida.push(p); return; }
+    const previo = vistos.get(k);
+    if (!previo) { vistos.set(k, p); salida.push(p); return; }
+    if ((p.actualizado || 0) > (previo.actualizado || 0)) {
+      salida[salida.indexOf(previo)] = p;
+      vistos.set(k, p);
+    }
+  });
+  return salida;
+}
+
 export function fusionar(local, remoto, playersRemotos) {
   const players = [...(local.players || [])];
   const porId = new Map(players.map((p, i) => [p.id, i]));
@@ -166,16 +197,19 @@ export function fusionar(local, remoto, playersRemotos) {
     const i = porId.get(r.id);
     if (i === undefined) {
       players.push(r);
+      porId.set(r.id, players.length - 1);
     } else if ((r.actualizado || 0) >= (players[i].actualizado || 0)) {
       players[i] = { ...players[i], ...r };
     }
   });
 
-  if (!remoto) return { ...local, players };
+  const limpios = deduplicar(players);
+
+  if (!remoto) return { ...local, players: limpios };
 
   return {
     ...local,
-    players,
+    players: limpios,
     tournaments: remoto.tournaments || [],
     activeId: remoto.activeId || null,
     season: remoto.season || local.season,

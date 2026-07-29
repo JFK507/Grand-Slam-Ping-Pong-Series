@@ -26,9 +26,13 @@ export default function ProveedorSesionFirebase({ db, children }) {
 
     const correo = (user.email || '').trim().toLowerCase();
     const admin = esCorreoAdmin(correo);
-    const yo = (db?.players || []).find(
-      (p) => (p.email || '').trim().toLowerCase() === correo,
-    );
+    const lista = db?.players || [];
+
+    /* El uid es el vínculo firme: lo escribe la propia cuenta al registrarse
+       o al reclamar una ficha. El correo es el respaldo, para la ficha que el
+       admin dejó preparada y todavía nadie reclamó. */
+    const yo = lista.find((p) => p.uid && p.uid === user.uid)
+      || lista.find((p) => (p.email || '').trim().toLowerCase() === correo);
 
     return {
       rol: admin ? 'admin' : (yo ? 'jugador' : 'invitado'),

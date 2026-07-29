@@ -13,7 +13,7 @@ import JugadoresTab from './jugadores/JugadoresTab.jsx';
 import MiPerfil from './perfil/MiPerfil.jsx';
 import Bienvenida from './pantallas/Bienvenida.jsx';
 import Registro from './pantallas/Registro.jsx';
-import { LuzSync, ProveedorSyncNulo } from './ui/sincronizacion.jsx';
+import { LuzSync, ProveedorSyncNulo, useSync } from './ui/sincronizacion.jsx';
 import DatosTab from './datos/DatosTab.jsx';
 
 const TABS = [
@@ -108,6 +108,7 @@ export default function App({ Sesion, Sync = ProveedorSyncNulo }) {
 
 function Pantallas({ db, commit, fotos, setFoto, saved, tab, setTab, ajustes, setAjustes }) {
   const { esAdmin, user, miId, cargando } = useSesion();
+  const { listo: syncListo } = useSync();
   const [invitado, setInvitado] = useState(null); // null = todavía sin leer
   const [omitioRegistro, setOmitioRegistro] = useState(false);
   const eraUsuario = useRef(false);
@@ -129,7 +130,8 @@ function Pantallas({ db, commit, fotos, setFoto, saved, tab, setTab, ajustes, se
     guardarModoInvitado(true).catch(() => { });
   };
 
-  if (cargando || invitado === null) {
+  /* Esperar a saber si ya tiene ficha antes de ofrecerle registrarse. */
+  if (cargando || invitado === null || (user && !miId && !syncListo)) {
     return (
       <div style={{
         background: C.ink, color: C.dim, minHeight: '100vh',

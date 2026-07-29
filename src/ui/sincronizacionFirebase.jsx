@@ -125,6 +125,10 @@ export default function ProveedorSyncFirebase({ db, commit, fotos, setFotos, chi
      la liga. Sin esto, quien entrara como invitado veía la app vacía. */
   const ultEstado = useRef(undefined);
   const ultJugadores = useRef(undefined);
+  /* Hasta que no llegue la lista de jugadores no se puede afirmar que alguien
+     no tiene ficha. Sin esta espera, la app pedía registro a quien ya estaba
+     registrado y se creaban duplicados. */
+  const [listo, setListo] = useState(false);
 
   const aplicar = useCallback(() => {
     const remoto = ultEstado.current;
@@ -150,11 +154,21 @@ export default function ProveedorSyncFirebase({ db, commit, fotos, setFotos, chi
       setEstado(navigator.onLine ? 'pendiente' : 'sinConexion');
     };
     const offEstado = escucharEstado((d) => { ultEstado.current = d; aplicar(); }, alFallar);
-    const offJug = escucharJugadores((l) => { ultJugadores.current = l; aplicar(); }, alFallar);
+    const offJug = escucharJugadores((l) => {
+      ultJugadores.current = l;
+      aplicar();
+      setListo(true);
+    }, (e) => { alFallar(e); setListo(true); });
+
+    /* Sin señal, o si la nube tarda, no se puede quedar esperando para siempre:
+       se sigue con lo que haya guardado en el teléfono. */
+    if (!navigator.onLine) setListo(true);
+    const rendirse = setTimeout(() => setListo(true), 8000);
 
     const alDesconectar = () => setEstado('sinConexion');
     window.addEventListener('offline', alDesconectar);
     return () => {
+      clearTimeout(rendirse);
       offEstado();
       offJug();
       window.removeEventListener('offline', alDesconectar);
@@ -208,8 +222,16 @@ export default function ProveedorSyncFirebase({ db, commit, fotos, setFotos, chi
       actualizado: Date.now(),
     };
     await subirJugador(ficha).catch((e) => marcarPaso(e, 'ficha'));
+
+    /* Reemplaza si ya existía en vez de agregar otra. Sin esto, alguien que
+       cierra sesión y vuelve a registrarse termina con dos fichas locales. */
     const local = dbRef.current;
-    commit({ ...local, players: [...(local.players || []), ficha] }, true);
+    const otros = (local.players || []).filter((p) => (
+      p.id !== ficha.id
+      && p.uid !== ficha.uid
+      && (p.email || '').trim().toLowerCase() !== ficha.email
+    ));
+    commit({ ...local, players: [...otros, ficha] }, true);
     return ficha;
   }, [user, commit]);
 
@@ -234,6 +256,7 @@ export default function ProveedorSyncFirebase({ db, commit, fotos, setFotos, chi
   }, []);
 
   const valor = useMemo(() => ({
+    listo,
     estado,
     subidoEn,
     error,
@@ -245,7 +268,7 @@ export default function ProveedorSyncFirebase({ db, commit, fotos, setFotos, chi
     reclamar,
     borrarJugadorNube,
   }), [
-    estado, subidoEn, error, subirAhora, bajarAhora, resolver,
+    listo, estado, subidoEn, error, subirAhora, bajarAhora, resolver,
     registrar, buscarReclamable, reclamar, borrarJugadorNube,
   ]);
 

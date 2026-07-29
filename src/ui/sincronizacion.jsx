@@ -10,6 +10,8 @@ import React, { createContext, useContext } from 'react';
            'alDia'        -> todo arriba
            'conflicto'    -> el otro admin subió algo en el medio */
 export const SyncCtx = createContext({
+  /* listo: ya sabemos quién está registrado. Sin nube, se sabe de inmediato. */
+  listo: true,
   estado: 'apagado', subidoEn: null, error: null,
   subirAhora: async () => { }, bajarAhora: async () => { }, resolver: async () => { },
   /* Registro de jugadores. Sin nube no hacen nada. */
