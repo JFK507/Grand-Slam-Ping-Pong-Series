@@ -185,10 +185,6 @@ export default function Perfil({ p, db, commit, onBack }) {
         </div>
       </div>
 
-      <Campo label="Notas" multi value={p.notas || ''}
-        placeholder="Estilo de juego, saque, con qué se le gana…"
-        onSave={(v) => set({ notas: v })} />
-
       {esAdmin && !usado && (
         <Btn onClick={borrar} style={{ borderColor: C.red, color: C.red }}>Borrar jugador</Btn>
       )}

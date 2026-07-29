@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { C } from '../lib/constantes.js';
 import { uid, shuffle } from '../lib/util.js';
+import { sellar } from '../lib/db.js';
 import { Btn, Chip, Eyebrow } from '../ui/primitivas.jsx';
 
 export default function Inscripcion({ db, commit, t, update }) {
@@ -18,7 +19,7 @@ export default function Inscripcion({ db, commit, t, update }) {
       id = ex.id;
     } else {
       id = uid();
-      players = [...db.players, { id, name: n, apodo: '', mano: '', notas: '' }];
+      players = [...db.players, sellar({ id, name: n, apodo: '', mano: '' })];
     }
     if (t.entrants.includes(id)) { setVal(''); return; }
     commit({

@@ -36,7 +36,7 @@ export default function ProveedorSyncFirebase({ db, commit, fotos, setFotos, chi
         return;
       }
 
-      commit(fusionar(local, remoto, players), true);
+      commit(fusionar(local, remoto, players), true, true);
 
       /* Fotos que no tenemos todavía. */
       const faltan = players.map((p) => p.id).filter((id) => !fotos[id]);
@@ -75,7 +75,7 @@ export default function ProveedorSyncFirebase({ db, commit, fotos, setFotos, chi
         commit({
           ...dbRef.current,
           sync: { ...(dbRef.current.sync || {}), version, subidoEn: Date.now(), pendiente: false },
-        }, true);
+        }, true, true);
       } else {
         /* Un jugador solo sube su propia ficha. */
         const yo = (local.players || []).find((p) => p.id === miId);
@@ -83,7 +83,7 @@ export default function ProveedorSyncFirebase({ db, commit, fotos, setFotos, chi
         commit({
           ...dbRef.current,
           sync: { ...(dbRef.current.sync || {}), subidoEn: Date.now(), pendiente: false },
-        }, true);
+        }, true, true);
       }
       setEstado('alDia');
       setError(null);
@@ -98,7 +98,7 @@ export default function ProveedorSyncFirebase({ db, commit, fotos, setFotos, chi
   const resolver = useCallback(async (quien) => {
     if (quien === 'nube') {
       const local = dbRef.current;
-      commit({ ...local, sync: { ...(local.sync || {}), pendiente: false } }, true);
+      commit({ ...local, sync: { ...(local.sync || {}), pendiente: false } }, true, true);
       setEstado('alDia');
       await bajarAhora();
     } else {
@@ -110,7 +110,7 @@ export default function ProveedorSyncFirebase({ db, commit, fotos, setFotos, chi
         commit({
           ...local,
           sync: { ...(local.sync || {}), version: remoto?.version || 0, pendiente: true },
-        }, true);
+        }, true, true);
         setEstado('pendiente');
       } catch (e) { setError(e); }
     }

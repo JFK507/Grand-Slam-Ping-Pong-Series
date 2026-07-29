@@ -83,7 +83,7 @@ export default function JugadoresTab({ db, commit }) {
       </div>
 
       <div style={{ fontSize: 10, color: C.dim }}>
-        Toca a un jugador para su ficha, foto, notas y estadísticas.
+        Toca a un jugador para su ficha, su foto y sus estadísticas.
         {esAdmin && ' Ahí mismo vinculas su Gmail.'}
       </div>
     </div>

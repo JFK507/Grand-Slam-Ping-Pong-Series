@@ -46,13 +46,16 @@ export default function App({ Sesion, Sync = ProveedorSyncNulo }) {
     try { await guardarEstado(payload); setSaved(true); } catch { setSaved(false); }
   }, []);
 
-  /* Todo cambio deja marca de pendiente, salvo que venga de la propia
-     sincronización (que ya sabe lo que hizo). */
-  const commit = useCallback((next, now = false) => {
-    const conMarca = next && next.sync && next.sync.pendiente !== undefined
-      ? next
-      : { ...next, sync: { ...(next?.sync || {}), pendiente: true } };
-    next = conMarca;
+  /* Todo cambio queda marcado como pendiente de subir.
+     La propia sincronización pasa deSync=true para que no se remarque,
+     porque ella ya sabe en qué estado dejó las cosas.
+     Ojo: acá había un error. Antes se intentaba adivinar mirando si
+     sync.pendiente venía definido, pero siempre lo está — arranca en false —
+     así que la marca nunca se ponía y nada se subía nunca. */
+  const commit = useCallback((next, now = false, deSync = false) => {
+    if (!deSync && next) {
+      next = { ...next, sync: { ...(next.sync || {}), pendiente: true } };
+    }
     setDb(next);
     pend.current = next;
     setSaved(false);
