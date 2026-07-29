@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { C } from '../lib/constantes.js';
 import { uid } from '../lib/util.js';
+import { sellar } from '../lib/db.js';
 import { agregados } from '../lib/estadisticas.js';
 import { Btn, Card } from '../ui/primitivas.jsx';
 import { Avatar } from '../ui/fotos.jsx';
@@ -21,7 +22,7 @@ export default function JugadoresTab({ db, commit }) {
     }
     commit({
       ...db,
-      players: [...db.players, { id: uid(), name: n, apodo: '', mano: '', notas: '' }],
+      players: [...db.players, sellar({ id: uid(), name: n, apodo: '', mano: '' })],
     }, true);
     setVal('');
   };

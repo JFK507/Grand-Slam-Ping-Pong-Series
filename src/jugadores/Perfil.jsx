@@ -2,6 +2,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { C } from '../lib/constantes.js';
 import { comprimirFoto } from '../lib/util.js';
+import { sellar } from '../lib/db.js';
 import { etiquetaPts } from '../lib/reglas.js';
 import { agregados, caraACara, partidosDe, rachaDe, rivalTop } from '../lib/estadisticas.js';
 import { Btn, Card, Eyebrow, Segmento } from '../ui/primitivas.jsx';
@@ -29,7 +30,7 @@ export default function Perfil({ p, db, commit, onBack }) {
 
   const set = (patch) => commit({
     ...db,
-    players: db.players.map((x) => (x.id === p.id ? { ...x, ...patch } : x)),
+    players: db.players.map((x) => (x.id === p.id ? sellar({ ...x, ...patch }) : x)),
   }, true);
 
   const subir = async (e) => {

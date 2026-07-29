@@ -1,7 +1,9 @@
 /* Cascarón: cabecera, pestañas y el ciclo de carga/guardado. */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { C } from './lib/constantes.js';
-import { leerTodo, guardarEstado, guardarFotos } from './lib/db.js';
+import {
+  leerTodo, guardarEstado, guardarFotos, leerModoInvitado, guardarModoInvitado,
+} from './lib/db.js';
 import { FotoCtx } from './ui/fotos.jsx';
 import { ProveedorDialogo } from './ui/dialogo.jsx';
 import { useSesion } from './ui/sesion.jsx';
@@ -9,6 +11,8 @@ import TorneoTab from './torneo/TorneoTab.jsx';
 import RankingTab from './ranking/RankingTab.jsx';
 import JugadoresTab from './jugadores/JugadoresTab.jsx';
 import MiPerfil from './perfil/MiPerfil.jsx';
+import Bienvenida from './pantallas/Bienvenida.jsx';
+import { LuzSync, ProveedorSyncNulo } from './ui/sincronizacion.jsx';
 import DatosTab from './datos/DatosTab.jsx';
 
 const TABS = [
@@ -16,12 +20,16 @@ const TABS = [
   ['jugadores', 'Jugadores'], ['perfil', 'Perfil'],
 ];
 
-export default function App() {
-  const { esAdmin } = useSesion();
+/* App carga los datos y los entrega al proveedor de sesión que le pasen.
+   No sabe de dónde viene la sesión: el punto de entrada real le pasa el de
+   Google, y el prototipo le pasa uno inventado. Así este archivo no arrastra
+   la librería de Firebase. */
+export default function App({ Sesion, Sync = ProveedorSyncNulo }) {
   const [db, setDb] = useState(null);
   const [fotos, setFotos] = useState({});
   const [tab, setTab] = useState('torneo');
   const [ajustes, setAjustes] = useState(false);
+  /* tab y ajustes viven acá arriba para no perderse al cambiar de sesión. */
   const [saved, setSaved] = useState(true);
   const timer = useRef(null);
   const pend = useRef(null);
@@ -38,7 +46,13 @@ export default function App() {
     try { await guardarEstado(payload); setSaved(true); } catch { setSaved(false); }
   }, []);
 
+  /* Todo cambio deja marca de pendiente, salvo que venga de la propia
+     sincronización (que ya sabe lo que hizo). */
   const commit = useCallback((next, now = false) => {
+    const conMarca = next && next.sync && next.sync.pendiente !== undefined
+      ? next
+      : { ...next, sync: { ...(next?.sync || {}), pendiente: true } };
+    next = conMarca;
     setDb(next);
     pend.current = next;
     setSaved(false);
@@ -76,6 +90,53 @@ export default function App() {
   }
 
   return (
+    <Sesion db={db}>
+      <Sync db={db} commit={commit} fotos={fotos} setFotos={setFotos}>
+        <Pantallas
+          db={db} commit={commit} fotos={fotos} setFoto={setFoto}
+          saved={saved} tab={tab} setTab={setTab}
+          ajustes={ajustes} setAjustes={setAjustes}
+        />
+      </Sync>
+    </Sesion>
+  );
+}
+
+function Pantallas({ db, commit, fotos, setFoto, saved, tab, setTab, ajustes, setAjustes }) {
+  const { esAdmin, user, cargando } = useSesion();
+  const [invitado, setInvitado] = useState(null); // null = todavía sin leer
+  const eraUsuario = useRef(false);
+
+  useEffect(() => { leerModoInvitado().then(setInvitado); }, []);
+
+  /* Si alguien cierra sesión, vuelve a aparecer la puerta de entrada. */
+  useEffect(() => {
+    if (eraUsuario.current && !user) {
+      setInvitado(false);
+      guardarModoInvitado(false).catch(() => { });
+    }
+    eraUsuario.current = !!user;
+  }, [user]);
+
+  const entrarDeInvitado = () => {
+    setInvitado(true);
+    guardarModoInvitado(true).catch(() => { });
+  };
+
+  if (cargando || invitado === null) {
+    return (
+      <div style={{
+        background: C.ink, color: C.dim, minHeight: '100vh',
+        display: 'grid', placeItems: 'center', fontFamily: 'var(--ui)',
+      }}>
+        Cargando…
+      </div>
+    );
+  }
+
+  if (!user && !invitado) return <Bienvenida onInvitado={entrarDeInvitado} />;
+
+  return (
     <FotoCtx.Provider value={{ fotos, setFoto }}>
      <ProveedorDialogo>
       <div style={{
@@ -94,7 +155,9 @@ export default function App() {
             Ping Pong Series
           </div>
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 9, color: saved ? C.line : C.gold }}>{saved ? '●' : '○'}</span>
+            <LuzSync />
+            <span title={saved ? 'Guardado en el teléfono' : 'Guardando…'}
+              style={{ fontSize: 9, color: saved ? C.line : C.gold }}>{saved ? '●' : '○'}</span>
             {esAdmin && (
               <button
                 onClick={() => setAjustes((v) => !v)}

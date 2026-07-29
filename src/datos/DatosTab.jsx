@@ -5,9 +5,11 @@ import { emptyDB, guardarFotos, migrar } from '../lib/db.js';
 import { useFotos } from '../ui/fotos.jsx';
 import { Btn, Eyebrow } from '../ui/primitivas.jsx';
 import { useConfirmar } from '../ui/dialogo.jsx';
+import { useSync } from '../ui/sincronizacion.jsx';
 
 export default function DatosTab({ db, commit }) {
   const confirmar = useConfirmar();
+  const sync = useSync();
   const { fotos } = useFotos();
   const [txt, setTxt] = useState('');
   const [msg, setMsg] = useState('');
@@ -47,8 +49,57 @@ export default function DatosTab({ db, commit }) {
   const kb = Math.round(JSON.stringify(fotos).length / 1024);
   const fin = db.tournaments.filter((t) => t.stage === 'finalizado').length;
 
+  const TEXTO_SYNC = {
+    alDia: 'Todo subido a la nube.',
+    pendiente: 'Hay cambios sin subir. Se suben solos en cuanto haya señal.',
+    subiendo: 'Subiendo…',
+    sinConexion: 'Sin señal. Los cambios quedan guardados y se suben después.',
+    conflicto: 'El otro administrador subió algo desde tu última bajada.',
+    apagado: 'Entrá con tu cuenta para sincronizar.',
+  };
+
   return (
     <div style={{ padding: 16, display: 'grid', gap: 12 }}>
+      {sync.estado !== 'apagado' && (
+        <>
+          <Eyebrow color={sync.estado === 'conflicto' ? C.red : C.gold}>Nube</Eyebrow>
+          <div style={{ fontSize: 12, color: C.dim, lineHeight: 1.5 }}>
+            {TEXTO_SYNC[sync.estado] || ''}
+            {sync.subidoEn && (
+              <><br />Última subida: {new Date(sync.subidoEn).toLocaleString()}</>
+            )}
+          </div>
+
+          {sync.estado === 'conflicto' ? (
+            <>
+              <div style={{ fontSize: 11.5, color: C.chalk, lineHeight: 1.55 }}>
+                Los dos registraron sin señal. Elegí cuál copia vale: subir la tuya
+                pisa la de la nube, y traer la de la nube descarta la tuya.
+                No hay vuelta atrás, así que mirá antes en Torneos qué tenés registrado.
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <Btn onClick={() => sync.resolver('local')} style={{ borderColor: C.gold, color: C.gold }}>
+                  Vale la mía
+                </Btn>
+                <Btn onClick={() => sync.resolver('nube')} style={{ borderColor: C.red, color: C.red }}>
+                  Vale la de la nube
+                </Btn>
+              </div>
+            </>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <Btn onClick={() => sync.subirAhora()} disabled={sync.estado === 'subiendo'}>
+                Subir ahora
+              </Btn>
+              <Btn onClick={() => sync.bajarAhora()} disabled={sync.estado === 'subiendo'}>
+                Bajar ahora
+              </Btn>
+            </div>
+          )}
+          <div style={{ height: 1, background: C.line, margin: '4px 0' }} />
+        </>
+      )}
+
       <Eyebrow>Respaldo</Eyebrow>
       <div style={{ fontSize: 12, color: C.dim, lineHeight: 1.5 }}>
         Los datos viven solo en este dispositivo. Exporta después de cada torneo

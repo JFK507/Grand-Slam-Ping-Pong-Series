@@ -6,6 +6,7 @@ import { NOMBRES } from './constantes.js';
 
 export const K_STATE = 'gsp:v2:state';
 export const K_FOTOS = 'gsp:v2:fotos';
+export const K_INVITADO = 'gsp:v2:invitado';
 
 const fallback = {
   async get(k) {
@@ -20,7 +21,8 @@ const almacen = () =>
   (typeof window !== 'undefined' && window.storage ? window.storage : fallback);
 
 export const emptyDB = () => ({
-  version: 3,
+  version: 4,
+  sync: { version: 0, subidoEn: 0, pendiente: false },
   players: [],
   tournaments: [],
   activeId: null,
@@ -36,8 +38,13 @@ export function migrar(d) {
   }
   d.seasons = d.seasons || [];
   d.tournaments = (d.tournaments || []).map((t) => ({ ...t, seasonId: t.seasonId || d.season.id }));
+  d.sync = d.sync || { version: 0, subidoEn: 0, pendiente: false };
   return d;
 }
+
+/* Sella un jugador con la hora del cambio. La fusión usa esta marca para
+   decidir qué copia vale cuando la misma ficha se tocó en dos lados. */
+export const sellar = (p) => ({ ...p, actualizado: Date.now() });
 
 export const nombreLibre = (usados) => {
   const libres = NOMBRES.filter((n) => !usados.includes(n));
@@ -64,3 +71,14 @@ export async function leerTodo() {
 
 export const guardarEstado = (db) => almacen().set(K_STATE, JSON.stringify(db));
 export const guardarFotos = (fotos) => almacen().set(K_FOTOS, JSON.stringify(fotos));
+
+/* Recuerda que alguien eligió entrar sin cuenta, para no volver a
+   preguntarle en cada apertura. */
+export async function leerModoInvitado() {
+  try {
+    const r = await almacen().get(K_INVITADO);
+    return r?.value === '1';
+  } catch { return false; }
+}
+
+export const guardarModoInvitado = (v) => almacen().set(K_INVITADO, v ? '1' : '0');
