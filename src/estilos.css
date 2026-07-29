@@ -1,0 +1,22 @@
+:root {
+  --disp: 'Barlow Condensed', 'Arial Narrow', Impact, sans-serif;
+  --ui: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+input, select, textarea { font-family: var(--ui); }
+
+/* números de marcador: condensados y de ancho fijo para que no salten */
+.num { font-family: var(--disp); font-variant-numeric: tabular-nums; }
+
+::-webkit-scrollbar { width: 0; height: 0; }
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
