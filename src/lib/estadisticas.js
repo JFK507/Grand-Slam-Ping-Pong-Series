@@ -1,26 +1,87 @@
 /* Todo lo que se calcula a partir del historial de torneos. */
-import { calcTorneo, ordenRanking, contarSets, tieneDetalleSets } from './reglas.js';
+import {
+  calcTorneo, ordenRanking, contarSets, tieneDetalleSets, instanciaDe, partidosDeCopa,
+} from './reglas.js';
+
+/* ───────── la tabla, recorriendo la historia en orden ─────────
+
+   Los duelos dependen de cómo estaba el ranking antes de cada copa, así que
+   no alcanza con sumar copas por separado: hay que reproducir la secuencia.
+   La tabla se recalcula al cerrar cada copa, y la primera copa de todas no
+   lleva duelos porque no hay nada con qué comparar. */
+
+/* Posiciones a partir de un acumulado. Los empatados comparten posición, así
+   que entre ellos la distancia es 0 y el duelo cuenta como choque directo. */
+export function puestosDesde(acum) {
+  const filas = Object.values(acum);
+  if (!filas.length) return null;
+  const orden = filas.slice().sort(ordenRanking);
+  const m = new Map();
+  let puesto = 0;
+  let anterior = null;
+  orden.forEach((r, i) => {
+    if (!anterior || r.pts !== anterior.pts || r.dif !== anterior.dif) puesto = i + 1;
+    m.set(r.id, puesto);
+    anterior = r;
+  });
+  /* Quien todavía no jugó nunca entra al final de la tabla. */
+  m.ultimo = orden.length + 1;
+  return m;
+}
+
+const cronologico = (a, b) => (
+  String(a.date || '').localeCompare(String(b.date || '')) || (a.edicion || 0) - (b.edicion || 0)
+);
+
+export function tablaProgresiva(db, seasonId) {
+  const copas = (db.tournaments || [])
+    .filter((t) => t.stage === 'finalizado' && (!seasonId || t.seasonId === seasonId))
+    .slice()
+    .sort(cronologico);
+
+  const acum = {};
+  const porCopa = [];
+
+  copas.forEach((t) => {
+    const puestos = puestosDesde(acum);
+    const r = calcTorneo(t, puestos);
+    porCopa.push({ t, ...r, puestos });
+
+    (t.entrants || []).forEach((id) => {
+      acum[id] = acum[id] || {
+        id, pts: 0, dif: 0, tor: 0, tit: 0, mejor: 0, finales: 0, clasif: 0,
+      };
+      const p = r.pts[id] || 0;
+      acum[id].pts += p;
+      acum[id].dif += r.dif[id] || 0;
+      acum[id].tor += 1;
+      acum[id].mejor = Math.max(acum[id].mejor, p);
+      if ((r.inst[id] ?? 0) >= 3) acum[id].finales += 1;
+      if ((r.inst[id] ?? 0) >= 1) acum[id].clasif += 1;
+    });
+    if (t.final?.winner && acum[t.final.winner]) acum[t.final.winner].tit += 1;
+  });
+
+  return { acum, porCopa };
+}
 
 /* Acumulado por jugador. Sin seasonId suma todos los tiempos. */
 export function agregados(db, seasonId) {
-  const acc = {};
-  db.tournaments
-    .filter((t) => t.stage === 'finalizado' && (!seasonId || t.seasonId === seasonId))
-    .forEach((t) => {
-      const r = t.result || calcTorneo(t);
-      t.entrants.forEach((id) => {
-        acc[id] = acc[id] || { id, pts: 0, dif: 0, tor: 0, tit: 0, mejor: 0, finales: 0, clasif: 0 };
-        const p = r.pts[id] || 0;
-        acc[id].pts += p;
-        acc[id].dif += r.dif[id] || 0;
-        acc[id].tor += 1;
-        acc[id].mejor = Math.max(acc[id].mejor, p);
-        if (p >= 15) acc[id].finales += 1;
-        if (p >= 3) acc[id].clasif += 1;
-      });
-      if (t.final?.winner && acc[t.final.winner]) acc[t.final.winner].tit += 1;
-    });
-  return acc;
+  return tablaProgresiva(db, seasonId).acum;
+}
+
+/* La tabla tal como está ahora, para calcular los duelos de la copa en curso
+   y para mostrar en pantalla lo que se juega cada partido. */
+export function puestosActuales(db, seasonId) {
+  return puestosDesde(tablaProgresiva(db, seasonId).acum);
+}
+
+/* La tabla tal como estaba ANTES de una copa concreta. Sirve para mostrar el
+   acta de una copa vieja con los puntos que valió en su momento, no con los
+   que valdría hoy. */
+export function puestosAntesDe(db, tournamentId, seasonId) {
+  const fila = tablaProgresiva(db, seasonId).porCopa.find((c) => c.t.id === tournamentId);
+  return fila ? fila.puestos : puestosActuales(db, seasonId);
 }
 
 /* Partidos de un jugador, en orden cronológico. Solo de cuartos en adelante,
@@ -90,9 +151,8 @@ export function listaRecords(db) {
   add('Más veces en cuartos', cla, cla.clasif, `${cla.clasif} clasificaciones`);
 
   let mejorDif = null;
-  db.tournaments.filter((t) => t.stage === 'finalizado').forEach((t) => {
-    const r = t.result || calcTorneo(t);
-    Object.entries(r.dif).forEach(([id, d]) => {
+  tablaProgresiva(db).porCopa.forEach(({ t, dif }) => {
+    Object.entries(dif).forEach(([id, d]) => {
       if (!mejorDif || d > mejorDif.valor) mejorDif = { id, valor: d, torneo: t.name };
     });
   });
@@ -257,5 +317,84 @@ export function asistencia(db) {
     filas: Object.values(ag)
       .map((r) => ({ id: r.id, tor: r.tor, pct: total ? Math.round((r.tor / total) * 100) : 0 }))
       .sort((x, y) => y.tor - x.tor),
+  };
+}
+
+/* Hasta dónde llega cada uno. Muestra quién se queda en la puerta:
+   muchos cuartos y ninguna final cuenta una historia. */
+export function embudo(db, seasonId) {
+  const ag = agregados(db, seasonId);
+  return Object.values(ag)
+    .map((r) => ({
+      id: r.id,
+      cuartos: r.clasif,
+      semis: 0,
+      finales: r.finales,
+      titulos: r.tit,
+      tor: r.tor,
+    }))
+    .map((r) => {
+      /* Semifinales alcanzadas: se cuenta sobre los partidos, porque el puntaje
+         acumulado no distingue entre llegar y ganar. */
+      const semis = db.tournaments
+        .filter((t) => t.stage === 'finalizado')
+        .filter((t) => (t.sf || []).some((m) => m.a === r.id || m.b === r.id))
+        .length;
+      return { ...r, semis };
+    })
+    .sort((x, y) => y.titulos - x.titulos || y.finales - x.finales || y.cuartos - x.cuartos);
+}
+
+/* Efectividad separada por ronda. Acá se ve quién se achica en la final. */
+export function efectividadPorRonda(db, minimo = 2) {
+  const acc = {};
+  todosLosPartidos(db).forEach((m) => {
+    [m.a, m.b].forEach((id) => {
+      acc[id] = acc[id] || { id, Cuartos: { j: 0, g: 0 }, Semifinal: { j: 0, g: 0 }, Final: { j: 0, g: 0 } };
+      acc[id][m.fase].j += 1;
+      if (m.winner === id) acc[id][m.fase].g += 1;
+    });
+  });
+  const pct = (x) => (x.j ? Math.round((x.g / x.j) * 100) : null);
+  return Object.values(acc)
+    .filter((r) => r.Cuartos.j + r.Semifinal.j + r.Final.j >= minimo)
+    .map((r) => ({
+      id: r.id,
+      cuartos: pct(r.Cuartos),
+      semis: pct(r.Semifinal),
+      finales: pct(r.Final),
+      jugados: r.Cuartos.j + r.Semifinal.j + r.Final.j,
+    }))
+    .sort((x, y) => (y.finales ?? -1) - (x.finales ?? -1) || y.jugados - x.jugados);
+}
+
+/* Racha en curso: lo que lleva ganado o perdido al día de hoy. */
+export function rachaActual(db, pid) {
+  const ms = partidosDe(db, pid);
+  if (!ms.length) return null;
+  const ganando = ms[ms.length - 1].ganado;
+  let n = 0;
+  for (let i = ms.length - 1; i >= 0; i -= 1) {
+    if (ms[i].ganado !== ganando) break;
+    n += 1;
+  }
+  return { ganando, n };
+}
+
+/* Contra quién le va peor y contra quién mejor, con al menos dos duelos. */
+export function nemesis(db, pid, minimo = 2) {
+  const riv = {};
+  partidosDe(db, pid).forEach((m) => {
+    riv[m.rival] = riv[m.rival] || { id: m.rival, n: 0, g: 0, p: 0 };
+    riv[m.rival].n += 1;
+    if (m.ganado) riv[m.rival].g += 1; else riv[m.rival].p += 1;
+  });
+  const lista = Object.values(riv).filter((r) => r.n >= minimo);
+  if (!lista.length) return null;
+  const peor = lista.slice().sort((x, y) => (x.g - x.p) - (y.g - y.p) || y.n - x.n)[0];
+  const mejor = lista.slice().sort((x, y) => (y.g - y.p) - (x.g - x.p) || y.n - x.n)[0];
+  return {
+    bestiaNegra: peor.p > peor.g ? peor : null,
+    victima: mejor.g > mejor.p ? mejor : null,
   };
 }

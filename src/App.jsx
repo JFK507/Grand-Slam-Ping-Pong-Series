@@ -108,7 +108,15 @@ export default function App({ Sesion, Sync = ProveedorSyncNulo }) {
 
 function Pantallas({ db, commit, fotos, setFoto, saved, tab, setTab, ajustes, setAjustes }) {
   const { esAdmin, user, miId, cargando } = useSesion();
-  const { listo: syncListo } = useSync();
+  const { listo: syncListo, subirFotoNube } = useSync();
+
+  /* Guardar una foto es local y en la nube. Si no hay nube (prototipo),
+     queda solo local y no falla. */
+  const guardarFoto = useCallback(async (id, dataUrl) => {
+    await setFoto(id, dataUrl);
+    if (!subirFotoNube) return;
+    try { await subirFotoNube(id, dataUrl); } catch { /* se reintenta al volver */ }
+  }, [setFoto, subirFotoNube]);
   const [invitado, setInvitado] = useState(null); // null = todavía sin leer
   const [omitioRegistro, setOmitioRegistro] = useState(false);
   const eraUsuario = useRef(false);
@@ -157,10 +165,13 @@ function Pantallas({ db, commit, fotos, setFoto, saved, tab, setTab, ajustes, se
   }
 
   return (
-    <FotoCtx.Provider value={{ fotos, setFoto }}>
+    <FotoCtx.Provider value={{ fotos, setFoto: guardarFoto }}>
      <ProveedorDialogo>
-      <div style={{
-        background: C.ink, color: C.chalk, minHeight: '100vh',
+      {/* La altura la fija el CSS con dvh, que en el celular descuenta la barra
+          del navegador. Así solo hace scroll el contenido y las pestañas de
+          abajo quedan siempre a la vista. */}
+      <div className="app-shell" style={{
+        background: C.ink, color: C.chalk,
         fontFamily: 'var(--ui)', display: 'flex', flexDirection: 'column',
       }}>
         <header style={{
@@ -193,7 +204,10 @@ function Pantallas({ db, commit, fotos, setFoto, saved, tab, setTab, ajustes, se
           </div>
         </header>
 
-        <main style={{ flex: 1, overflowY: 'auto', paddingBottom: 8 }}>
+        <main style={{
+          flex: 1, minHeight: 0, overflowY: 'auto',
+          WebkitOverflowScrolling: 'touch', paddingBottom: 8,
+        }}>
           {ajustes ? (
             <DatosTab db={db} commit={commit} />
           ) : (
@@ -207,7 +221,7 @@ function Pantallas({ db, commit, fotos, setFoto, saved, tab, setTab, ajustes, se
         </main>
 
         <nav style={{
-          display: 'grid', gridTemplateColumns: 'repeat(4,1fr)',
+          display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', flexShrink: 0,
           borderTop: `1px solid ${C.line}`, background: C.slate,
           paddingBottom: 'env(safe-area-inset-bottom)',
         }}>

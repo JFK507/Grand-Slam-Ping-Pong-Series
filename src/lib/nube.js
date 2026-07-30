@@ -107,6 +107,30 @@ export async function subirFoto(id, img) {
   await setDoc(doc(nube, 'fotos', id), { img, actualizado: Date.now() });
 }
 
+export async function borrarFoto(id) {
+  await deleteDoc(doc(nube, 'fotos', id));
+}
+
+/* Escucha las fotos en vivo, pero entregando solo lo que cambió.
+   Sin docChanges cada aviso traería las fotos de todos otra vez, que son
+   lo más pesado que guarda la app. */
+export function escucharFotos(cb, alFallar) {
+  return onSnapshot(
+    collection(nube, 'fotos'),
+    (snap) => {
+      const puestas = {};
+      const quitadas = [];
+      snap.docChanges().forEach((c) => {
+        if (c.type === 'removed') { quitadas.push(c.doc.id); return; }
+        const img = c.doc.data()?.img;
+        if (img) puestas[c.doc.id] = img;
+      });
+      if (Object.keys(puestas).length || quitadas.length) cb({ puestas, quitadas });
+    },
+    (e) => alFallar?.(e),
+  );
+}
+
 /* Busca una ficha que el admin haya creado de antemano con este correo.
    La lectura es pública, así que no hace falta permiso especial. */
 export async function buscarFichaPorCorreo(correo) {
@@ -152,6 +176,34 @@ export function escucharJugadores(cb, alFallar) {
   );
 }
 
+/* ¿Hay conflicto de verdad?
+
+   Solo puede haberlo entre dos administradores, porque son los únicos que
+   escriben el documento compartido de torneos y temporadas. Un jugador con un
+   cambio de apodo pendiente NO está en conflicto con nada: su ficha es un
+   documento aparte y no se pisa con los torneos.
+
+   Antes esto no se distinguía, y a cualquier jugador con algo pendiente le
+   aparecía conflicto en cuanto el admin subía una jornada. Peor: al quedar en
+   conflicto la app deja de subir, así que el jugador quedaba trabado. */
+export function hayConflicto({ esAdmin, local, remoto }) {
+  if (!esAdmin) return false;
+  if (!local?.sync?.pendiente) return false;
+  if (!remoto) return false;
+
+  const mia = local.sync.version || 0;
+  if ((remoto.version || 0) <= mia) return false;
+
+  /* Un aparato recién estrenado arranca en versión cero y la nube ya va
+     adelantada. Eso no es un choque: es ponerse al día. Solo cuenta como
+     conflicto si además ya tiene torneos registrados acá, porque entonces sí
+     hay dos versiones distintas de la liga en juego. */
+  if (mia === 0 && (local.tournaments || []).length === 0) return false;
+
+  return true;
+}
+
+
 /* ───────── fusión ───────── */
 
 /* Junta lo local con lo que vino de la nube.
@@ -189,7 +241,7 @@ function deduplicar(lista) {
   return salida;
 }
 
-export function fusionar(local, remoto, playersRemotos) {
+export function fusionar(local, remoto, playersRemotos, opciones = {}) {
   const players = [...(local.players || [])];
   const porId = new Map(players.map((p, i) => [p.id, i]));
 
@@ -203,7 +255,25 @@ export function fusionar(local, remoto, playersRemotos) {
     }
   });
 
-  const limpios = deduplicar(players);
+  /* La nube manda también en las bajas: un jugador borrado allá tiene que
+     desaparecer acá. Antes esta función solo agregaba y actualizaba, así que
+     un borrado no llegaba nunca a los demás aparatos.
+
+     Se protegen dos cosas para no borrar de más: la ficha propia, y todo lo
+     que se creó local y todavía no subió (mientras haya algo pendiente). */
+  const protegidos = new Set([opciones.protegerId].filter(Boolean));
+  const hayPendientes = !!local.sync?.pendiente;
+  const subidoEn = local.sync?.subidoEn || 0;
+  const idsNube = new Set((playersRemotos || []).map((p) => p.id));
+  const sobrevive = (p) => (
+    idsNube.has(p.id)
+    || protegidos.has(p.id)
+    || (hayPendientes && (p.actualizado || 0) > subidoEn)
+  );
+
+  const limpios = deduplicar(
+    playersRemotos === undefined ? players : players.filter(sobrevive),
+  );
 
   if (!remoto) return { ...local, players: limpios };
 
@@ -218,7 +288,10 @@ export function fusionar(local, remoto, playersRemotos) {
       ...(local.sync || {}),
       version: remoto.version || 0,
       bajadoEn: Date.now(),
-      pendiente: false,
+      /* NO se toca la marca de pendiente. Bajar no resuelve lo que falta subir.
+         Antes se ponía en false acá, y eso cancelaba la subida en curso: los
+         cambios de ficha se quedaban en el teléfono de quien los hizo. */
+      pendiente: local.sync?.pendiente || false,
     },
   };
 }

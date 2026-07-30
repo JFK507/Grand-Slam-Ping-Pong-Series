@@ -1,11 +1,14 @@
 /* Cuartos y semis: un set seco a 7 y a 10 respectivamente. */
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { C, TARGET_QF, TARGET_SF } from '../lib/constantes.js';
 import { isWin } from '../lib/reglas.js';
 import { Btn, Card, Fila } from '../ui/primitivas.jsx';
 import Marcador from './Marcador.jsx';
+import EnJuego, { calcularEnJuego } from './EnJuego.jsx';
+import { puestosActuales } from '../lib/estadisticas.js';
 
-export default function Ronda({ t, name, update, fase }) {
+export default function Ronda({ t, name, update, fase, db }) {
+  const puestos = useMemo(() => puestosActuales(db, t.seasonId), [db, t.seasonId]);
   const target = fase === 'qf' ? TARGET_QF : TARGET_SF;
   const list = t[fase] || [];
   const [open, setOpen] = useState(null);
@@ -58,6 +61,7 @@ export default function Ronda({ t, name, update, fase }) {
         winnerId={m.winner} winner={m.winner ? name(m.winner) : null}
         onConfirm={() => { setMatch(open, { locked: true }, true); setOpen(null); }}
         onBack={() => setOpen(null)}
+        extra={<EnJuego puestos={puestos} idA={m.a} idB={m.b} nameA={name(m.a)} nameB={name(m.b)} />}
       />
     );
   }
@@ -78,11 +82,23 @@ export default function Ronda({ t, name, update, fase }) {
               <Fila id={m.a} nombre={name(m.a)} score={m.sa} win={m.locked && m.winner === m.a} />
               <Fila id={m.b} nombre={name(m.b)} score={m.sb} win={m.locked && m.winner === m.b} />
             </div>
-            {!m.locked && (
-              <span style={{ fontSize: 10, color: C.red, letterSpacing: '.14em', fontWeight: 700 }}>
-                JUGAR
-              </span>
-            )}
+            {!m.locked && (() => {
+              const j = calcularEnJuego(puestos, m.a, m.b);
+              return (
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: 10, color: C.red, letterSpacing: '.14em', fontWeight: 700 }}>
+                    JUGAR
+                  </div>
+                  {j && (
+                    <div style={{ fontSize: 9, color: C.dim, marginTop: 3 }}>
+                      {j.siGanaA.nombre === j.siGanaB.nombre
+                        ? j.siGanaA.nombre
+                        : `+${Math.max(j.siGanaA.gana, j.siGanaB.gana)} en juego`}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </Card>
       ))}

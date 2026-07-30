@@ -3,8 +3,10 @@ import React, { useMemo, useRef, useState } from 'react';
 import { C } from '../lib/constantes.js';
 import { comprimirFoto } from '../lib/util.js';
 import { sellar } from '../lib/db.js';
-import { etiquetaPts } from '../lib/reglas.js';
-import { agregados, caraACara, partidosDe, rachaDe, rivalTop } from '../lib/estadisticas.js';
+import { ETIQUETA_INSTANCIA } from '../lib/reglas.js';
+import {
+  agregados, caraACara, partidosDe, rachaActual, rachaDe, rivalTop,
+} from '../lib/estadisticas.js';
 import { Btn, Card, Eyebrow, Segmento } from '../ui/primitivas.jsx';
 import { Avatar, useFotos } from '../ui/fotos.jsx';
 import { useConfirmar } from '../ui/dialogo.jsx';
@@ -80,6 +82,10 @@ export default function Perfil({ p, db, commit, onBack }) {
   const top = useMemo(() => rivalTop(db, p.id), [db, p.id]);
   const h2h = useMemo(() => (rival ? caraACara(db, p.id, rival) : null), [db, p.id, rival]);
   const racha = useMemo(() => rachaDe(db, p.id), [db, p.id]);
+  const ahora = useMemo(() => rachaActual(db, p.id), [db, p.id]);
+  const misPartidos = useMemo(() => partidosDe(db, p.id), [db, p.id]);
+  const ganados = misPartidos.filter((m) => m.ganado).length;
+  const pct = misPartidos.length ? Math.round((ganados / misPartidos.length) * 100) : null;
   const totalT = db.tournaments.filter((t) => t.stage === 'finalizado').length;
 
   const set = (patch) => commit({
@@ -166,14 +172,28 @@ export default function Perfil({ p, db, commit, onBack }) {
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 5 }}>
             <Stat k="PTS" v={s.pts} color={C.gold} />
-            <Stat k="DIF" v={(s.dif > 0 ? '+' : '') + s.dif} />
+            <Stat k="VICTORIAS" v={pct === null ? '—' : `${pct}%`}
+              color={pct >= 60 ? C.gold : (pct !== null && pct < 40) ? C.red : undefined} />
             <Stat k="EDICIONES" v={s.tor} />
             <Stat k="TÍTULOS" v={s.tit} color={s.tit ? C.gold : undefined} />
           </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 5 }}>
+            <Stat k="GANADOS" v={ganados} color={ganados ? C.gold : undefined} />
+            <Stat k="PERDIDOS" v={misPartidos.length - ganados}
+              color={misPartidos.length - ganados ? C.red : undefined} />
+            <Stat
+              k="RACHA ACTUAL"
+              v={ahora ? `${ahora.n} ${ahora.ganando ? 'ganados' : 'perdidos'}` : '—'}
+              color={ahora ? (ahora.ganando ? C.gold : C.red) : undefined} />
+          </div>
+
           <div style={{ fontSize: 11, color: C.dim, lineHeight: 1.6 }}>
-            Mejor resultado: {etiquetaPts(s.mejor)} · Asistencia: {s.tor} de {totalT} ediciones
+            Asistencia: {s.tor} de {totalT} ediciones
             {' '}({totalT ? Math.round((s.tor / totalT) * 100) : 0}%)
-            {racha > 1 && ` · Mejor racha: ${racha} seguidos`}
+            {racha > 1 && ` · Mejor racha histórica: ${racha} seguidos`}
+            <br />
+            Victorias y racha cuentan partidos de cuartos en adelante.
           </div>
         </>
       )}

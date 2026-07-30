@@ -19,6 +19,8 @@ export const SyncCtx = createContext({
   buscarReclamable: async () => null,
   reclamar: async () => { throw new Error('sin conexión con la nube'); },
   borrarJugadorNube: async () => { throw new Error('sin conexión con la nube'); },
+  /* null cuando no hay nube: la foto se guarda solo en el aparato. */
+  subirFotoNube: null,
 });
 
 export const useSync = () => useContext(SyncCtx);
@@ -36,6 +38,7 @@ export function LuzSync() {
     subiendo: ['#C9A227', 'Subiendo…'],
     sinConexion: ['#82828B', 'Sin señal'],
     conflicto: ['#D62828', 'Conflicto'],
+    rechazado: ['#D62828', 'Rechazado'],
   };
   const [color, texto] = mapa[estado] || mapa.sinConexion;
   const titulo = subidoEn

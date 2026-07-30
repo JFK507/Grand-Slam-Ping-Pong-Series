@@ -4,18 +4,22 @@ import { C } from '../lib/constantes.js';
 import { uid, hoy } from '../lib/util.js';
 import { nombreTemporada } from '../lib/db.js';
 import { ordenRanking } from '../lib/reglas.js';
-import { agregados, listaRecords } from '../lib/estadisticas.js';
+import { agregados } from '../lib/estadisticas.js';
 import { Btn, Card, Eyebrow, Segmento, Vacio } from '../ui/primitivas.jsx';
 import { useConfirmar } from '../ui/dialogo.jsx';
 import { useSesion } from '../ui/sesion.jsx';
 import { Avatar } from '../ui/fotos.jsx';
+import Estadisticas from './Estadisticas.jsx';
+import Records from './Records.jsx';
 
 const medal = (i) => (i === 0 ? C.gold : i === 1 ? '#9AA0A6' : i === 2 ? '#A0642B' : C.line);
 
 export default function RankingTab({ db, commit }) {
   const { esAdmin } = useSesion();
   const confirmar = useConfirmar();
-  const [modo, setModo] = useState('temporada');
+  /* El ranking permanente es el que vale, así que arranca en General.
+     La vista de temporada queda para ver el aporte de la temporada en curso. */
+  const [modo, setModo] = useState('general');
   const name = (id) => db.players.find((p) => p.id === id)?.name || '?';
   const seasonId = modo === 'temporada' ? db.season.id : null;
 
@@ -23,7 +27,6 @@ export default function RankingTab({ db, commit }) {
     () => Object.values(agregados(db, seasonId)).sort(ordenRanking),
     [db, seasonId],
   );
-  const recs = useMemo(() => (modo === 'records' ? listaRecords(db) : []), [db, modo]);
   const totalT = db.tournaments
     .filter((t) => t.stage === 'finalizado' && (!seasonId || t.seasonId === seasonId)).length;
 
@@ -73,34 +76,19 @@ export default function RankingTab({ db, commit }) {
   return (
     <div style={{ padding: 16, display: 'grid', gap: 12 }}>
       <Segmento
-        ops={[['temporada', 'Temporada'], ['historico', 'Histórico'], ['records', 'Récords']]}
+        ops={[
+          ['general', 'General'], ['temporada', 'Temporada'],
+          ['records', 'Récords'], ['stats', 'Estadísticas'],
+        ]}
         val={modo} onChange={setModo} />
 
-      {modo === 'records' ? (
-        recs.length === 0
-          ? <Vacio>Los récords aparecen cuando termines tu primer torneo.</Vacio>
-          : (
-            <div style={{ display: 'grid', gap: 6 }}>
-              {recs.map((r, i) => (
-                <Card key={i} style={{ padding: '11px 12px', display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <Avatar id={r.id} name={name(r.id)} size={34} ring={C.gold} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <Eyebrow color={C.red}>{r.titulo}</Eyebrow>
-                    <div style={{ fontSize: 14, fontWeight: 700, marginTop: 3 }}>{name(r.id)}</div>
-                    <div style={{ fontSize: 10.5, color: C.dim, marginTop: 1 }}>{r.detalle}</div>
-                  </div>
-                  <div className="num" style={{ fontSize: 26, fontWeight: 800, color: C.gold }}>
-                    {r.valor}
-                  </div>
-                </Card>
-              ))}
-            </div>
-          )
+      {modo === 'stats' ? <Estadisticas db={db} /> : modo === 'records' ? (
+        <Records db={db} />
       ) : (
         <>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
             <Eyebrow color={C.gold}>
-              {modo === 'temporada' ? db.season.nombre : 'Todos los tiempos'}
+              {modo === 'temporada' ? db.season.nombre : 'Ranking general'}
             </Eyebrow>
             <div style={{ marginLeft: 'auto', fontSize: 11, color: C.dim }}>
               {totalT} {totalT === 1 ? 'torneo' : 'torneos'}
@@ -168,7 +156,8 @@ export default function RankingTab({ db, commit }) {
               </div>
 
               <div style={{ fontSize: 10, color: C.dim, lineHeight: 1.6 }}>
-                T = ediciones jugadas · DIF = diferencia de puntos (desempate) · ★ = títulos
+                T = ediciones jugadas · DIF = anotados menos recibidos, desempata · ★ = títulos
+                {modo === 'general' && <><br />El ranking general no se reinicia entre temporadas.</>}
               </div>
             </>
           )}

@@ -1,12 +1,14 @@
 /* Final al mejor de 3: sets a 10 con ventaja de 2, y si van 1-1, tercero a 7 seco. */
-import React from 'react';
+import React, { useMemo } from 'react';
 import { C } from '../lib/constantes.js';
 import { vibra } from '../lib/util.js';
 import { isWin, setTarget, setAdv, setsGanados } from '../lib/reglas.js';
 import { Card } from '../ui/primitivas.jsx';
 import Marcador from './Marcador.jsx';
+import EnJuego from './EnJuego.jsx';
+import { puestosActuales } from '../lib/estadisticas.js';
 
-export default function FinalFase({ t, name, update }) {
+export default function FinalFase({ t, db, name, update }) {
   const f = t.final;
   const sets = f.sets;
   const idx = sets.length - 1;
@@ -37,7 +39,11 @@ export default function FinalFase({ t, name, update }) {
     update({ final: { ...f, sets: ns, winner: nw } });
   };
 
+  const puestos = useMemo(() => puestosActuales(db, t.seasonId), [db, t.seasonId]);
+
   const marcadorSets = (
+    <>
+    <EnJuego puestos={puestos} idA={f.a} idB={f.b} nameA={name(f.a)} nameB={name(f.b)} />
     <Card style={{
       padding: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
     }}>
@@ -58,6 +64,7 @@ export default function FinalFase({ t, name, update }) {
         ))}
       </div>
     </Card>
+    </>
   );
 
   return (

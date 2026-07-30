@@ -55,6 +55,7 @@ export default function DatosTab({ db, commit }) {
     subiendo: 'Subiendo…',
     sinConexion: 'Sin señal. Los cambios quedan guardados y se suben después.',
     conflicto: 'El otro administrador subió algo desde tu última bajada.',
+    rechazado: 'El servidor rechazó la subida por permisos. No se arregla reintentando: hay que revisar las reglas de Firestore.',
     apagado: 'Entrá con tu cuenta para sincronizar.',
   };
 
@@ -134,15 +135,32 @@ export default function DatosTab({ db, commit }) {
       <div style={{ height: 1, background: C.line, margin: '4px 0' }} />
       <Eyebrow>Reglas cargadas</Eyebrow>
       <div style={{ fontSize: 11, color: C.dim, lineHeight: 1.7 }}>
-        Clasificación: primeros 8 en llegar a 7 puntos.
+        <b style={{ color: C.chalk }}>Formato.</b> Clasificación a rey de la mesa: pasan los
+        primeros 8 en llegar a 7 puntos. Cuartos a 7 seco, semis a 10 seco.
+        Final al mejor de 3: sets a 10 con ventaja de 2, y si van 1-1, tercero a 7 seco.
+        <br /><br />
+        <b style={{ color: C.chalk }}>Escalón de cada copa</b>, solo el más alto:
+        no clasificar 1 más lo anotado en la clasificación · clasificar 10 ·
+        semifinalista 15 · finalista 20 · campeón 25.
+        <br /><br />
+        <b style={{ color: C.chalk }}>Duelos</b>, en cada partido de cuartos en adelante,
+        según la distancia en la tabla:
         <br />
-        Cuartos a 7 seco · semis a 10 seco.
+        victoria lógica, favorito por 2 o más: +1 / −1
         <br />
-        Final: sets a 10 con ventaja de 2; si van 1-1, tercer set a 7 seco.
+        choque directo, a 1 puesto o empatados: +3 / −1
         <br />
-        Puntos acumulativos: clasificar 3 · ganar cuartos +5 · ganar semis +7 · ganar la final +10 (campeón 25).
+        sorpresa leve, gana el de abajo por 2 a 5: +4 / −2
         <br />
-        La diferencia cuenta lo anotado menos lo recibido de cuartos en adelante.
+        sorpresa media, por 6 a 8: +5 / −3
+        <br />
+        gran sorpresa, por 9 o más: +7 / −5
+        <br /><br />
+        La tabla se recalcula al cerrar cada copa. En la primera copa de la liga
+        no hay duelos porque todavía no hay tabla.
+        <br /><br />
+        <b style={{ color: C.chalk }}>Desempate:</b> los puntos anotados menos los recibidos.
+        El ranking general no se reinicia entre temporadas.
       </div>
     </div>
   );

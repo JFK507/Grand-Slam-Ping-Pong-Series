@@ -1,18 +1,11 @@
 /* Etapa 2: muestra el orden de competencia y el primer partido. */
 import React from 'react';
 import { C } from '../lib/constantes.js';
-import { shuffle } from '../lib/util.js';
 import { Btn, Card, ColOrden, Eyebrow } from '../ui/primitivas.jsx';
 import { Avatar } from '../ui/fotos.jsx';
 
 export default function Orden({ t, name, update }) {
   const { izq, der } = t.groups;
-
-  const resortear = () => {
-    const s = shuffle([...izq, ...der]);
-    const half = Math.ceil(s.length / 2);
-    update({ groups: { izq: s.slice(0, half), der: s.slice(half) } }, true);
-  };
 
   const empezar = () => {
     const clas = {};
@@ -45,10 +38,7 @@ export default function Orden({ t, name, update }) {
         Se juega a un punto. El que pierde sale y entra el siguiente de su lado, en este orden.
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        <Btn onClick={resortear}>Volver a sortear</Btn>
-        <Btn tone="gold" onClick={empezar}>Empezar</Btn>
-      </div>
+      <Btn tone="gold" full onClick={empezar}>Empezar</Btn>
     </div>
   );
 }

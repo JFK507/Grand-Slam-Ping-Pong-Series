@@ -1,15 +1,18 @@
 /* Acta del torneo: lados, orden de clasificación y todos los resultados. */
 import React, { useMemo } from 'react';
 import { C } from '../lib/constantes.js';
-import { calcTorneo, contarSets, etiquetaPts, isWin, ordenRanking, setTarget, setAdv, tieneDetalleSets } from '../lib/reglas.js';
+import {
+  ETIQUETA_INSTANCIA, calcTorneo, contarSets, isWin, ordenRanking,
+  setTarget, setAdv, tieneDetalleSets,
+} from '../lib/reglas.js';
 import { ColOrden, Eyebrow, Pips } from '../ui/primitivas.jsx';
 import { Avatar } from '../ui/fotos.jsx';
 
-export default function Registro({ t, name }) {
-  const { pts, dif } = useMemo(() => calcTorneo(t), [t]);
+export default function Registro({ t, name, puestos = null }) {
+  const { pts, dif, inst } = useMemo(() => calcTorneo(t, puestos), [t, puestos]);
   const noClas = t.entrants.filter((id) => !t.qualified.includes(id));
   const tabla = t.entrants
-    .map((id) => ({ id, pts: pts[id] || 0, dif: dif[id] || 0 }))
+    .map((id) => ({ id, pts: pts[id] || 0, dif: dif[id] || 0, inst: inst[id] || 0 }))
     .sort(ordenRanking);
 
   const Sec = ({ children }) => (
@@ -160,7 +163,7 @@ export default function Registro({ t, name }) {
         {tabla.map((r, i) => (
           <div key={r.id} style={{
             display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px',
-            background: C.card, border: `1px solid ${r.pts >= 25 ? C.gold : C.line}`,
+            background: C.card, border: `1px solid ${r.inst === 4 ? C.gold : C.line}`,
             borderRadius: 9,
           }}>
             <span className="num" style={{ width: 16, fontSize: 11, color: C.dim }}>{i + 1}</span>
@@ -170,7 +173,7 @@ export default function Registro({ t, name }) {
               <div style={{
                 fontSize: 9, color: C.dim, letterSpacing: '.08em', textTransform: 'uppercase',
               }}>
-                {etiquetaPts(r.pts)}
+                {ETIQUETA_INSTANCIA[r.inst]}
               </div>
             </div>
             <span className="num" style={{

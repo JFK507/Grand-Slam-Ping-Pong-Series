@@ -1,14 +1,17 @@
 /* Vista de un torneo: su cuadro, su acta y el texto para compartir. */
-import React from 'react';
+import React, { useMemo } from 'react';
 import { C } from '../lib/constantes.js';
 import { Btn, Eyebrow, Segmento } from '../ui/primitivas.jsx';
 import { useConfirmar } from '../ui/dialogo.jsx';
+import { puestosAntesDe } from '../lib/estadisticas.js';
 import CuadroCompleto from './CuadroCompleto.jsx';
 import Registro from './Registro.jsx';
 import Compartir from './Compartir.jsx';
 
 export default function Detalle({ t, db, commit, name, modo, setModo, onBack }) {
   const confirmar = useConfirmar();
+  /* Los duelos de esa copa se calcularon con la tabla de ese momento. */
+  const puestos = useMemo(() => puestosAntesDe(db, t.id, t.seasonId), [db, t.id, t.seasonId]);
   const hayOtro = !!db.activeId && db.activeId !== t.id;
 
   /* Si un torneo se cerró por error, se puede reabrir: sale del ranking
@@ -50,7 +53,7 @@ export default function Detalle({ t, db, commit, name, modo, setModo, onBack }) 
       </div>
 
       {modo === 'cuadro' && <CuadroCompleto t={t} name={name} />}
-      {modo === 'registro' && <Registro t={t} name={name} />}
+      {modo === 'registro' && <Registro t={t} name={name} puestos={puestos} />}
       {modo === 'compartir' && <Compartir t={t} db={db} name={name} />}
 
       {t.stage === 'finalizado' && commit && (

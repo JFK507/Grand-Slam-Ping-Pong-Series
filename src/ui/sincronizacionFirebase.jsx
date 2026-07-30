@@ -2,9 +2,9 @@
    sube en cuanto hay cambios pendientes y conexión. */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Conflicto, bajarFotos, bajarTodo, borrarJugador, buscarFichaPorCorreo,
-  escucharEstado, escucharJugadores, fusionar, pasarCodigo, reclamarFicha,
-  subirEstado, subirJugador,
+  Conflicto, bajarTodo, borrarFoto, borrarJugador, buscarFichaPorCorreo,
+  escucharEstado, escucharFotos, escucharJugadores, fusionar, hayConflicto,
+  pasarCodigo, reclamarFicha, subirEstado, subirFoto, subirJugador,
 } from '../lib/nube.js';
 import { guardarFotos } from '../lib/db.js';
 import { SyncCtx } from './sincronizacion.jsx';
@@ -15,6 +15,10 @@ export default function ProveedorSyncFirebase({ db, commit, fotos, setFotos, chi
   const [estado, setEstado] = useState('sinConexion');
   const [error, setError] = useState(null);
   const trabajando = useRef(false);
+  /* Un rechazo de permisos no se arregla reintentando: hay que cambiar las
+     reglas. Sin este freno la app giraba en falso cada segundo y medio,
+     gastando cuota y sin avisar nunca del problema real. */
+  const noReintentar = useRef(false);
   const dbRef = useRef(db);
   dbRef.current = db;
 
@@ -89,12 +93,27 @@ export default function ProveedorSyncFirebase({ db, commit, fotos, setFotos, chi
       }
       setEstado('alDia');
       setError(null);
+      noReintentar.current = false;
     } catch (e) {
       setError(e);
-      setEstado(e instanceof Conflicto ? 'conflicto' : 'pendiente');
+      if (e instanceof Conflicto) {
+        setEstado('conflicto');
+      } else if (e?.code === 'permission-denied') {
+        /* Permanente: se corta el reintento y se avisa. */
+        noReintentar.current = true;
+        setEstado('rechazado');
+      } else {
+        setEstado('pendiente');
+      }
     }
     trabajando.current = false;
   }, [commit, esAdmin, miId, user]);
+
+  /* Un intento a mano vuelve a habilitar los automáticos. */
+  const subirAMano = useCallback(async () => {
+    noReintentar.current = false;
+    await subirAhora();
+  }, [subirAhora]);
 
   /* Al resolver un conflicto se elige qué copia vale. */
   const resolver = useCallback(async (quien) => {
@@ -137,16 +156,20 @@ export default function ProveedorSyncFirebase({ db, commit, fotos, setFotos, chi
     const local = dbRef.current;
     if (!local) return;
 
-    /* Si tenemos cambios sin subir y la nube ya avanzó, no se pisa nada:
-       lo resuelve una persona desde los ajustes. */
-    if (local.sync?.pendiente && remoto && (remoto.version || 0) > (local.sync.version || 0)) {
+    /* Solo es conflicto si dos admins tocaron los torneos. Para un jugador
+       con su ficha pendiente no hay nada que resolver. */
+    if (hayConflicto({ esAdmin, local, remoto })) {
       setEstado('conflicto');
       return;
     }
 
-    commit(fusionar(local, remoto ?? null, players ?? []), true, true);
+    /* players va tal cual, sin convertir undefined en lista vacía: para la
+       fusión, undefined significa "todavía no llegó la lista" y lista vacía
+       significa "la nube no tiene jugadores". Confundirlas borraría a todos
+       cuando el aviso del estado llega antes que el de los jugadores. */
+    commit(fusionar(local, remoto ?? null, players, { protegerId: miId }), true, true);
     if (!local.sync?.pendiente) setEstado('alDia');
-  }, [commit]);
+  }, [commit, miId, esAdmin]);
 
   useEffect(() => {
     const alFallar = (e) => {
@@ -175,25 +198,33 @@ export default function ProveedorSyncFirebase({ db, commit, fotos, setFotos, chi
     };
   }, [aplicar]);
 
-  /* Fotos que falten, cuando cambia la lista de jugadores. */
+  /* ── fotos en vivo ──
+     Antes solo se bajaban cuando cambiaba la CANTIDAD de jugadores, así que
+     cambiarse la foto no se veía en los otros aparatos hasta reabrir la app. */
+  const fotosRef = useRef(fotos);
+  fotosRef.current = fotos;
+
   useEffect(() => {
-    if (!db?.players?.length) return;
-    const faltan = db.players.map((p) => p.id).filter((id) => !fotos[id]);
-    if (!faltan.length || !navigator.onLine) return;
-    let vivo = true;
-    bajarFotos(faltan).then((nuevas) => {
-      if (!vivo || !Object.keys(nuevas).length) return;
-      const juntas = { ...fotos, ...nuevas };
+    const off = escucharFotos(({ puestas, quitadas }) => {
+      const juntas = { ...fotosRef.current, ...puestas };
+      quitadas.forEach((id) => { delete juntas[id]; });
       setFotos(juntas);
       guardarFotos(juntas).catch(() => { });
-    }).catch(() => { });
-    return () => { vivo = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [db?.players?.length]);
+    }, () => { /* si falla, se sigue con las que ya estaban */ });
+    return off;
+  }, [setFotos]);
+
+  /* Guardar una foto también en la nube. Sin esto la foto vivía solo en el
+     aparato donde se puso y nadie más la veía. */
+  const subirFotoNube = useCallback(async (id, dataUrl) => {
+    if (dataUrl) await subirFoto(id, dataUrl);
+    else await borrarFoto(id);
+  }, []);
 
   /* Subir solo cuando hay algo pendiente y señal. */
   useEffect(() => {
-    if (!user || !pendiente || estado === 'conflicto' || !navigator.onLine) return undefined;
+    if (!user || !pendiente || !navigator.onLine) return undefined;
+    if (estado === 'conflicto' || estado === 'rechazado' || noReintentar.current) return undefined;
     const t = setTimeout(() => { subirAhora(); }, 1500);
     return () => clearTimeout(t);
   }, [user, pendiente, estado, subirAhora]);
@@ -260,16 +291,17 @@ export default function ProveedorSyncFirebase({ db, commit, fotos, setFotos, chi
     estado,
     subidoEn,
     error,
-    subirAhora,
+    subirAhora: subirAMano,
     bajarAhora,
     resolver,
     registrar,
     buscarReclamable,
     reclamar,
     borrarJugadorNube,
+    subirFotoNube,
   }), [
-    listo, estado, subidoEn, error, subirAhora, bajarAhora, resolver,
-    registrar, buscarReclamable, reclamar, borrarJugadorNube,
+    listo, estado, subidoEn, error, subirAMano, bajarAhora, resolver,
+    registrar, buscarReclamable, reclamar, borrarJugadorNube, subirFotoNube,
   ]);
 
   return <SyncCtx.Provider value={valor}>{children}</SyncCtx.Provider>;

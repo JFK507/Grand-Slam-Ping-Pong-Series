@@ -1,24 +1,11 @@
 /* Etapa 4: revela el cuadro ya sorteado. */
 import React from 'react';
 import { C } from '../lib/constantes.js';
-import { shuffle } from '../lib/util.js';
 import { Btn, Card, Eyebrow } from '../ui/primitivas.jsx';
 import { Avatar } from '../ui/fotos.jsx';
 
 export default function Cuadro({ t, name, update }) {
   const qf = t.qf;
-
-  const resortear = () => {
-    const idx = shuffle([0, 1, 2, 3, 4, 5, 6, 7]);
-    update({
-      qf: [0, 1, 2, 3].map((i) => ({
-        n: i + 1,
-        a: t.qualified[idx[i * 2]], b: t.qualified[idx[i * 2 + 1]],
-        seedA: idx[i * 2] + 1, seedB: idx[i * 2 + 1] + 1,
-        sa: 0, sb: 0, winner: null, locked: false,
-      })),
-    }, true);
-  };
 
   const Llave = ({ titulo, ms }) => (
     <div style={{ display: 'grid', gap: 6 }}>
@@ -58,10 +45,9 @@ export default function Cuadro({ t, name, update }) {
       <Llave titulo="Semifinal 1 sale de aquí" ms={[qf[0], qf[2]]} />
       <div style={{ height: 1, background: C.line }} />
       <Llave titulo="Semifinal 2 sale de aquí" ms={[qf[1], qf[3]]} />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 8 }}>
-        <Btn onClick={resortear}>Resortear</Btn>
-        <Btn tone="gold" onClick={() => update({ stage: 'cuartos' }, true)}>Empezar cuartos</Btn>
-      </div>
+      <Btn tone="gold" full onClick={() => update({ stage: 'cuartos' }, true)}>
+        Empezar cuartos
+      </Btn>
     </div>
   );
 }

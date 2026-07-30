@@ -83,9 +83,9 @@ export default function TorneoTab({ db, commit }) {
       {active.stage === 'orden' && <Orden t={active} name={name} update={update} />}
       {active.stage === 'clasificacion' && <Clasificacion t={active} name={name} update={update} />}
       {active.stage === 'cuadro' && <Cuadro t={active} name={name} update={update} />}
-      {active.stage === 'cuartos' && <Ronda t={active} name={name} update={update} fase="qf" />}
-      {active.stage === 'semis' && <Ronda t={active} name={name} update={update} fase="sf" />}
-      {active.stage === 'final' && <FinalFase t={active} name={name} update={update} />}
+      {active.stage === 'cuartos' && <Ronda t={active} db={db} name={name} update={update} fase="qf" />}
+      {active.stage === 'semis' && <Ronda t={active} db={db} name={name} update={update} fase="sf" />}
+      {active.stage === 'final' && <FinalFase t={active} db={db} name={name} update={update} />}
       {active.stage === 'resumen' && (
         <Resumen t={active} name={name} db={db} commit={commit} setVer={setVer} />
       )}

@@ -20,3 +20,13 @@ input, select, textarea { font-family: var(--ui); }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* Cáscara de la app: alto exacto de la pantalla, sin scroll de página.
+   Así la barra de pestañas queda fija abajo y solo se desplaza el contenido.
+   dvh descuenta la barra del navegador en el celular; vh queda de respaldo
+   para los navegadores que no lo soportan. */
+.app-shell {
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
